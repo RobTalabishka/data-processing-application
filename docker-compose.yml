@@ -1,0 +1,92 @@
+version: "3.8"
+services:
+
+  zookeeper:
+    image: 'confluentinc/cp-zookeeper:latest'
+    container_name: zookeeper
+    networks:
+      - betvictor
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ALLOW_ANONYMOUS_LOGIN: yes
+    ports:
+      - 22181:2181
+
+  kafka:
+    container_name: kafka
+    image: 'confluentinc/cp-kafka:latest'
+    networks:
+      - betvictor
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_KRAFT_CLUSTER_ID: 1
+      KAFKA_ENABLE_KRAFT: no
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      ALLOW_PLAINTEXT_LISTENER: yes
+    ports:
+      - 29092:29092
+      - 9092:9092
+    depends_on:
+      - zookeeper
+
+  db:
+    image: postgres
+    container_name: db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: betvictor
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    networks:
+      - betvictor
+
+  data-processing-application:
+    container_name: data-processing-application
+    image: data-processing-application:lastest
+    build:
+      context: .
+      dockerfile: data-processing-application/src/main/resources/Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - betvictor
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      BOOTSTRAP_SERVERS: "kafka:9092"
+      SPRING_KAFKA_CONSUMER_BOOTSTRAP-SERVERS: "kafka:9092"
+
+  data-repository-application:
+    container_name: data-repository-application
+    image: data-repository-application:lastest
+    build:
+      context: .
+      dockerfile: data-repository-application/src/main/resources/Dockerfile
+    ports:
+      - "8090:8090"
+    networks:
+      - betvictor
+    depends_on:
+      - db
+      - kafka
+      - zookeeper
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      BOOTSTRAP_SERVERS: "kafka:9092"
+      SPRING_KAFKA_CONSUMER_BOOTSTRAP-SERVERS: "kafka:9092"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/betvictor
+
+networks:
+  betvictor:
+    driver: bridge
+
+volumes:
+  pgdata:
